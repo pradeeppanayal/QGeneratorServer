@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<!-------------------------------->
+<!--     @author: Pradeep CH    -->
+<!--     @version: 1.0          -->
+<!-------------------------------->
+<html>
+    <head>
+        <link rel="icon" type="image/png" sizes="32x32" href="/qgenerator/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/qgenerator/favicon-16x16.png">
+        <meta name="theme-color" content="#ffffff">
+        <title>Question Generator</title>
+    </head>
+    <style>
+        input[type=text], input[type=number], select {
+            width: 100%;
+            padding: 12px 20px;
+            margin: 8px 0;
+            display: inline-block;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            width: 100%;
+            padding: 12px 20px;
+            margin: 8px 0;
+            display: inline-block;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            min-height: 100px;
+            height: auto;
+        }
+        .fullSize {
+            width: 100%;
+        }
+        .primarybtn {
+            margin: 8px 0;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 14px 20px;
+            cursor: pointer;
+        }
+        .primarybtn:hover {
+            background-color: #45a049;
+        }
+
+        .primarybtn:disabled {
+            background: #6e6e6e;
+            cursor: not-allowed;
+        }
+        .container{
+            border-radius: 5px;
+            background-color: #f0f0f0;
+            padding: 20px;
+            margin: 10px;
+        } 
+        .redText{
+            color: red;
+        }
+        .banner{
+            margin-bottom: 10px;
+        }
+        .response{
+            overflow: auto;
+        }
+        .smallAction{
+            padding: 5px;
+            float: right;
+        }
+    </style>
+    <body>
+        
+        <div class="container"> 
+            <div>
+                <label class="banner redText" id="errText"></label>
+            </div>
+            <label for="inputtext">Input Text<span class="redText">*</span></label>
+            <textarea id="inputtext" maxlength="1000" placeholder="Type your text..."></textarea>
+            <div id="questSection" style="display: none;">
+                <label for="question">Question<span class="redText">*</span></label>
+                <input type="text" id="question" placeholder="Type your question.."></textarea>
+            </div>
+            <div id="maxQuestSection" >
+                <label for="question">Max Questions<span class="redText">*</span></label>
+                <input maxlength="100" type="number" max="50" min="1"  id="maxQuestion" value="5"></textarea>
+            </div>
+            <label for="mode">Mode<span class="redText">*</span></label>
+            <select id="mode" name="mode">
+            <option value="YesOrNo">Yes/No</option>
+            <option value="mcq">MCQ</option>
+            <option value="short">Short</option>
+            <option value="paraphrase">Paraphrase</option>
+            <option value="answer">Answer</option>
+            </select>  
+            <label for="output">Output Type<span class="redText">*</span></label>
+            <select id="ouputType" name="ouputType">
+            <option value="text">Text</option>
+            <option value="json">Json</option>
+            </select>  
+            <input type="button" class="primarybtn fullSize" id="generate" value="Generate"> 
+            <hr />
+            <div>        
+                <span><strong>Response</strong></span> <input type="button" id="save" class="primarybtn smallAction" value="Export" disabled />    
+                <pre  id="op" class="response">Response will be displayed here....</pre>
+            </div>
+        </div>
+    </body>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        //Ref: https://stackoverflow.com/a/65586044/1926283
+        function save(text,filename){
+            var link = document.createElement('a');
+            link.href = 'data:text/plain;charset=UTF-8,' + escape(text);
+            link.download =filename
+            link.click();
+        }
+
+        $(document).ready(function (){
+            console.log("Document ready")
+            $('#save').on('click',function(e){
+                if(e)
+                    e.preventDefault();
+                mode = $('#mode').val()
+                fformat = $('#ouputType').val()=='text' ? "txt" :"json";
+                filename =  GetNow()+"_"+mode+"." +fformat;
+                save($('#op').html(),filename)
+            });
+            function GetNow(){
+                var currentdate = new Date(); 
+                yyyy =  currentdate.getFullYear()
+                m = (currentdate.getMonth()+1); 
+                mm = (m>9? "":"0")+m;
+                d = currentdate.getDate();
+                dd = (d>9? "": "0")+d;
+                var datetime =yyyy+ mm + dd;
+                return datetime;
+            }
+            $('#generate').on('click', function(e){
+                if(e){
+                    e.preventDefault();
+                }
+                resetInfoFields();
+                var inputText = $('#inputtext').val()
+                var mode = $('#mode').val()
+                var question = $("#question").val();
+                var maxQuestions =  $('#maxQuestion').val()
+                var ouputType = $('#ouputType').val();
+
+                if(!inputText || !mode || (mode === 'answer' && !question) || (mode != 'answer' && !maxQuestions)){
+                    showError("Provide required fields")
+                    return;
+                }
+                $('#generate').attr('disabled' , true);
+                $('#generate').val("Generating....")
+                
+                var payload = {
+                    'input_text': inputText,                
+                }
+                if(mode === 'answer')
+                    payload ['input_question'] = question
+                if( mode != 'answer')
+                    payload['max_questions'] = parseInt(maxQuestions)
+
+                var wrappedPayload = {
+                    payload: payload,
+                    mode:mode,
+                    ouputType:ouputType
+                }
+                
+                $.ajax({
+                    type:'POST',
+                    url:'/qgenerator/api/generate',
+                    contentType:'application/json',
+                    data: JSON.stringify(wrappedPayload),
+                    success:function(res){
+                        resp = JSON.parse(res)
+                        if (resp['status'] == 'Success'){
+                            showOP(resp['data'])
+                        }
+                        else{
+                            showOP("Invalid response received :" + resp['data'])
+                        }
+                        $('#save').attr('disabled',false)
+                    },
+                    error:function(er){
+                        resp = JSON.parse(er.responseText)
+                        showOP("Invalid response received :" + resp['data'])
+                    }, 
+                    complete:function(){
+                        $('#generate').attr('disabled' , false);
+                        $('#generate').val("Generate")
+                    }
+                });
+            });
+            function showError(msg){
+                $('#errText').html(msg)
+            }
+            function showOP(data){
+                if (data instanceof Object)
+                    $('#op').html(JSON.stringify(data,null,4))
+                else
+                    $('#op').html(data  )
+
+            }
+            function resetInfoFields(){
+                $('#save').attr('disabled',true)
+                showOP("Response will be shown here....")
+                showError("")
+            }
+            $('#ouputType').on('change', function(){
+                resetInfoFields()
+            });
+            $('#mode').on('change', function(){
+                resetInfoFields()
+                console.log('Changed to val :', $('#mode').val())
+                $('#questSection').hide()
+                $('#maxQuestSection').show()
+                if( $('#mode').val() == 'answer'){
+                    $('#questSection').show()
+                    $('#maxQuestSection').hide()
+                }
+            });
+        });
+    </script>
+</html>
